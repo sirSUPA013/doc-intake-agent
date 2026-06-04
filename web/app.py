@@ -1,10 +1,13 @@
 """Web front door for the agent — upload a document (PDF or text) and watch the
 agent extract structured fields and summarize it.
 
-Runs in one of two modes, shown as a banner on the page:
-  - LIVE: if ANTHROPIC_API_KEY is set, a real Claude model drives the agent.
-  - DEMO: otherwise it falls back to a scripted model, so the page always works
-    (e.g. if there's no network at an interview). The mode is never hidden.
+Modes (shown as a banner):
+  - DEMO: scripted model, free, always available. The public default.
+  - LIVE: real Claude, unlocked by entering the PIN. A daily cap is the cost
+    backstop; the PIN can override the cap when needed. See web/gating.py.
+
+If no ANTHROPIC_API_KEY is configured, the app stays in demo mode regardless, so
+it can never faceplant (e.g. no network at an interview).
 """
 
 from __future__ import annotations
@@ -15,11 +18,12 @@ import json
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from doc_intake import build_agent
 from doc_intake.llm import LLM
+from web import gating
 
 load_dotenv()  # pick up a local .env if present
 
@@ -39,20 +43,23 @@ class DemoLLM:
         })
 
 
-def current_mode() -> str:
-    return "live" if os.environ.get("ANTHROPIC_API_KEY") else "demo"
+def effective_mode(unlocked: bool, override: bool) -> str:
+    """Mode actually used, accounting for both the gate and key availability."""
+    mode = gating.decide_mode(unlocked, override)
+    if mode == "live" and not os.environ.get("ANTHROPIC_API_KEY"):
+        return "demo"
+    return mode
 
 
-def get_llm() -> tuple[LLM, str]:
-    """Live Claude model if a key is present, else the scripted fallback."""
-    if os.environ.get("ANTHROPIC_API_KEY"):
+def pick_llm(mode: str) -> LLM:
+    if mode == "live" and os.environ.get("ANTHROPIC_API_KEY"):
         try:
             from doc_intake.providers import ClaudeLLM
 
-            return ClaudeLLM(), "live"
+            return ClaudeLLM()
         except Exception:
-            return DemoLLM(), "demo"
-    return DemoLLM(), "demo"
+            return DemoLLM()
+    return DemoLLM()
 
 
 def _extract_text(pasted: str, upload: UploadFile | None) -> tuple[str, str | None]:
@@ -65,7 +72,7 @@ def _extract_text(pasted: str, upload: UploadFile | None) -> tuple[str, str | No
 
                 reader = PdfReader(io.BytesIO(raw))
                 text = "\n".join(page.extract_text() or "" for page in reader.pages)
-            except Exception as exc:  # noqa: BLE001 - surface any parse failure to the user
+            except Exception as exc:  # noqa: BLE001 - surface any parse failure
                 return "", f"Could not read PDF: {exc}"
             if not text.strip():
                 return "", ("No text found in the PDF — it may be a scanned/image "
@@ -91,25 +98,42 @@ PAGE = """<!doctype html>
   <button type="submit" data-testid="submit">Extract</button>
 </form>
 {result}
+<hr style="margin-top:32px;border:none;border-top:1px solid #e5e5e5">
+<form method="post" action="/unlock" style="color:#666;font-size:0.9em">
+  <strong>Live mode</strong> (real Claude) &mdash; enter PIN:
+  <input type="password" name="pin" data-testid="pin" style="width:120px">
+  <label><input type="checkbox" name="override" value="1" data-testid="override"> override daily cap</label>
+  <button type="submit" data-testid="unlock">Unlock</button>
+  {unlock_msg}
+</form>
 </body></html>"""
 
 
 def _banner(mode: str) -> str:
     if mode == "live":
+        used, cap = gating.live_used_today(), gating.DAILY_LIVE_CAP
         return ('<p data-testid="mode" style="padding:8px 12px;background:#dcfce7;'
-                'border-radius:6px">Live mode &mdash; powered by Claude (real model).</p>')
+                f'border-radius:6px">Live mode &mdash; powered by Claude. '
+                f'({used}/{cap} live extractions used today)</p>')
     return ('<p data-testid="mode" style="padding:8px 12px;background:#fef9c3;'
-            'border-radius:6px">Demo mode &mdash; scripted responses (no API key found).</p>')
+            'border-radius:6px">Demo mode &mdash; scripted responses. Unlock live '
+            'mode with the PIN below.</p>')
 
 
-def _render(doc_text: str = "", result_html: str = "", mode: str = "demo") -> str:
+def _render(doc_text: str = "", result_html: str = "", mode: str = "demo",
+            unlock_msg: str = "") -> str:
     return PAGE.format(banner=_banner(mode), doc_text=html.escape(doc_text),
-                       result=result_html)
+                       result=result_html, unlock_msg=unlock_msg)
+
+
+def _gate(request: Request) -> tuple[bool, bool]:
+    return gating.read_cookie(request.cookies.get(gating.COOKIE_NAME))
 
 
 @app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    return _render(mode=current_mode())
+def index(request: Request) -> str:
+    unlocked, override = _gate(request)
+    return _render(mode=effective_mode(unlocked, override))
 
 
 @app.get("/healthz")
@@ -117,10 +141,28 @@ def healthz() -> dict:
     return {"status": "ok"}
 
 
+@app.post("/unlock")
+def unlock(request: Request, pin: str = Form(""), override: str = Form("")):
+    if not gating.pin_ok(pin):
+        msg = '<span style="color:#b91c1c"> &mdash; incorrect PIN</span>'
+        return HTMLResponse(_render(mode="demo", unlock_msg=msg))
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.set_cookie(
+        gating.COOKIE_NAME, gating.make_cookie(override=bool(override)),
+        httponly=True, samesite="lax", max_age=8 * 3600,
+    )
+    return resp
+
+
 @app.post("/extract", response_class=HTMLResponse)
-def extract(doc_text: str = Form(""), upload: UploadFile | None = File(None)) -> str:
+def extract(request: Request, doc_text: str = Form(""),
+            upload: UploadFile | None = File(None)) -> str:
+    unlocked, override = _gate(request)
+    mode = effective_mode(unlocked, override)
+
     text, error = _extract_text(doc_text, upload)
-    _, mode = get_llm()
+    if not error and len(text.encode("utf-8")) > gating.MAX_INPUT_BYTES:
+        error = f"Input too large (limit {gating.MAX_INPUT_BYTES // 1000} KB)."
 
     if error:
         result_html = (
@@ -129,8 +171,11 @@ def extract(doc_text: str = Form(""), upload: UploadFile | None = File(None)) ->
         )
         return _render(doc_text=doc_text, result_html=result_html, mode=mode)
 
-    llm, mode = get_llm()
+    llm = pick_llm(mode)
+    if mode == "live":
+        gating.record_live_call()
     result = build_agent(llm).invoke({"raw_text": text})
+
     extracted = json.dumps(result.get("extracted"), indent=2)
     result_html = (
         '<div data-testid="result" style="margin-top:24px;padding:16px;'
