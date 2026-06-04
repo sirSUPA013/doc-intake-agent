@@ -23,8 +23,8 @@ class FakeLLM:
     """A scripted model. Returns canned responses in order, one per call.
 
     It also records every prompt it receives, so a test can assert *how many
-    times* and *with what* the agent called the model — a lightweight version of
-    the call / token instrumentation the role asks for.
+    times* and *with what* the agent called the model. (This is a test-only
+    helper — not production observability or token accounting.)
     """
 
     def __init__(self, responses: list[str]) -> None:

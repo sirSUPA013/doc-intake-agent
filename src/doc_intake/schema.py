@@ -23,9 +23,9 @@ class ExtractedDoc(BaseModel):
     @field_validator("total_amount", mode="before")
     @classmethod
     def _coerce_amount(cls, v: object) -> object:
-        # REGRESSION GUARD: the model often returns money as a string like
-        # "$1,234.56". A bare float() raises on the "$" and commas, which used
-        # to fail the whole extraction. Strip the formatting before coercion.
+        # Guard against a known model-output failure mode: models often return
+        # money as a string like "$1,234.56", and a bare float() raises on the
+        # "$" and commas. Strip the formatting before coercion.
         if isinstance(v, str):
             cleaned = v.strip().replace("$", "").replace(",", "")
             return None if cleaned == "" else float(cleaned)

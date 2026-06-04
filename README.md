@@ -55,8 +55,24 @@ uvicorn web.app:app --reload    # then open http://127.0.0.1:8000
 | Test coverage reporting | `pytest --cov` (currently 96%) |
 | Async agent execution | `tests/test_graph.py::test_async_invoke` (pytest-asyncio) |
 | Playwright E2E UI testing | `tests/e2e/` — real browser drives the FastAPI front door |
-| Call instrumentation (lightweight observability) | `FakeLLM.calls` records every model call |
-| Cloud deployment | `Dockerfile` + `DEPLOY.md` — ready for GCP Cloud Run |
+| Model-call assertions (test-only) | `FakeLLM.calls` lets tests assert how the model was called — not production observability |
+| Cloud Run packaging | `Dockerfile` + `DEPLOY.md` — deploy config, boots locally; not yet deployed live |
+
+## Scope and honest limits
+
+This is a focused proof-of-concept, not a production system. Deliberately out of
+scope so far — calling it out rather than implying otherwise:
+
+- **No tool-calling.** The agent extracts and validates; it doesn't call external
+  tools, so this doesn't exercise tool-call testing (a large part of real agent testing).
+- **No real-model evaluation.** Tests use a scripted `FakeLLM` for determinism.
+  There's no eval set scoring a real model's extraction *quality* — only the
+  plumbing is tested, not the prompt's accuracy.
+- **No production observability.** No tracing, structured logging, metrics, or
+  token/cost tracking. `FakeLLM.calls` is a test helper only.
+- **Not deployed live.** The Dockerfile and Cloud Run steps are correct and boot
+  locally, but nothing has been deployed to a billed GCP project.
+- **No CI yet.** The suite runs locally; there's no automated pipeline.
 
 ## Design note
 
