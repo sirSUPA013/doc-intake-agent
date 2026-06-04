@@ -8,6 +8,9 @@ real model's output actually drives the graph to a valid, schema-checked result.
 import os
 
 import pytest
+from dotenv import load_dotenv
+
+load_dotenv()  # pick up a local .env so the key is visible to the skipif below
 
 pytestmark = [
     pytest.mark.integration,
