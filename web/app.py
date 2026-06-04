@@ -149,6 +149,14 @@ pre{background:var(--void);border:1px solid rgba(59,130,246,.15);border-radius:6
 footer{position:relative;z-index:1;text-align:center;color:var(--text-muted);font-size:.8rem;padding:18px;}
 a{color:var(--blue-light);text-decoration:none;}
 a:hover{color:var(--blue-pale);}
+.overlay{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+  flex-direction:column;gap:16px;background:rgba(7,8,10,.8)}
+.overlay.show{display:flex}
+.spinner{width:46px;height:46px;border-radius:50%;border:3px solid rgba(59,130,246,.25);
+  border-top-color:var(--blue);animation:spin .8s linear infinite}
+.overlay p{font-family:'Rajdhani',sans-serif;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--blue-light);font-size:.9rem}
+@keyframes spin{to{transform:rotate(360deg)}}
 """
 
 PAGE = """<!doctype html>
@@ -161,6 +169,7 @@ PAGE = """<!doctype html>
 <style>__STYLE__</style></head>
 <body>
 <div class="grid"></div>
+<div class="overlay" id="overlay"><div class="spinner"></div><p>Reading the document…</p></div>
 <div class="wrap">
   <div class="brand">SJForge &middot; AI Agent Demo</div>
   <h1>Document Intake Agent</h1>
@@ -187,6 +196,16 @@ PAGE = """<!doctype html>
 </div>
 <footer>Part of the <a href="https://portfolio.sjforge.dev">SJForge</a> ecosystem &middot;
 <a href="https://github.com/sirSUPA013/doc-intake-agent">source on GitHub</a></footer>
+<script>
+(function(){
+  var f=document.querySelector('form[action="/extract"]'),o=document.getElementById('overlay');
+  if(f&&o){f.addEventListener('submit',function(){
+    o.classList.add('show');
+    var b=f.querySelector('[data-testid=submit]');
+    if(b){b.disabled=true;b.textContent='Extracting…';}
+  });}
+})();
+</script>
 </body></html>"""
 
 
