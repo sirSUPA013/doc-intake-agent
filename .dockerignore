@@ -8,3 +8,7 @@ htmlcov/
 .coverage
 *.pyc
 *.md
+.env
+.env.local
+plans/
+samples/
