@@ -31,10 +31,15 @@ is why this is a **graph**, not a straight chain.
 ```bash
 python -m venv .venv
 .venv/Scripts/activate          # Windows;  source .venv/bin/activate on macOS/Linux
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+playwright install chromium     # one-time, for the E2E test
 
 python demo.py                  # watch the agent run (no API key needed)
-pytest --cov=src/doc_intake     # run the suite with a coverage report
+pytest --cov=src/doc_intake     # fast unit + integration suite (E2E excluded)
+pytest -m e2e                   # Playwright browser test against the real UI
+
+# the web UI itself:
+uvicorn web.app:app --reload    # then open http://127.0.0.1:8000
 ```
 
 ## How it maps to the role
@@ -49,7 +54,9 @@ pytest --cov=src/doc_intake     # run the suite with a coverage report
 | Structured output / JSON schema validation | `src/doc_intake/schema.py` — Pydantic contract |
 | Test coverage reporting | `pytest --cov` (currently 96%) |
 | Async agent execution | `tests/test_graph.py::test_async_invoke` (pytest-asyncio) |
+| Playwright E2E UI testing | `tests/e2e/` — real browser drives the FastAPI front door |
 | Call instrumentation (lightweight observability) | `FakeLLM.calls` records every model call |
+| Cloud deployment | `Dockerfile` + `DEPLOY.md` — ready for GCP Cloud Run |
 
 ## Design note
 
