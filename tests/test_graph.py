@@ -6,7 +6,7 @@ runs with controlled inputs" requirement.
 """
 
 from doc_intake import build_agent
-from doc_intake.llm import FakeLLM
+from doc_intake.llm import Document, FakeLLM
 
 
 def test_happy_path(valid_doc_json, summary_text):
@@ -51,3 +51,13 @@ async def test_async_invoke(valid_doc_json, summary_text):
     agent = build_agent(llm)
     result = await agent.ainvoke({"raw_text": "..."})
     assert result["status"] == "done"
+
+
+def test_happy_path_with_document(valid_doc_json, summary_text):
+    # Full graph run on an image/PDF input instead of text — same flow, deterministic.
+    llm = FakeLLM([valid_doc_json, summary_text])
+    agent = build_agent(llm)
+    result = agent.invoke({"document": Document("image", "image/png", b"fake-image-bytes")})
+    assert result["status"] == "done"
+    assert result["extracted"]["doc_type"] == "invoice"
+    assert len(llm.calls) == 2

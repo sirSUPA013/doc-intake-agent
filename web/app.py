@@ -15,7 +15,6 @@ If no ANTHROPIC_API_KEY is configured, the app stays in demo mode regardless.
 from __future__ import annotations
 
 import html
-import io
 import json
 import os
 
@@ -24,8 +23,11 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from doc_intake import build_agent
-from doc_intake.llm import LLM
+from doc_intake.llm import LLM, Document
 from web import gating
+
+MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB cap on uploads
+_IMAGE_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 
 load_dotenv()
 
@@ -33,7 +35,7 @@ load_dotenv()
 class DemoLLM:
     """Scripted fallback so the page works with no API key (labeled in the UI)."""
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, document=None) -> str:
         if prompt.startswith("Summarize"):
             return "Demo summary: an invoice was extracted from the submitted text."
         return json.dumps({
@@ -63,23 +65,28 @@ def pick_llm(mode: str) -> LLM:
     return DemoLLM()
 
 
-def _extract_text(pasted: str, upload: UploadFile | None) -> tuple[str, str | None]:
+def _resolve_input(pasted: str, upload: UploadFile | None) -> tuple[dict | None, str | None]:
+    """Turn the request into agent state ({raw_text} or {document}), or an error.
+
+    Images and PDFs are passed straight to the model (Claude reads them — no OCR
+    engine), so scanned and handwritten docs work too.
+    """
     if upload is not None and upload.filename:
         raw = upload.file.read()
-        if upload.filename.lower().endswith(".pdf"):
-            try:
-                from pypdf import PdfReader
-
-                reader = PdfReader(io.BytesIO(raw))
-                text = "\n".join(page.extract_text() or "" for page in reader.pages)
-            except Exception as exc:  # noqa: BLE001 - surface any parse failure
-                return "", f"Could not read PDF: {exc}"
-            if not text.strip():
-                return "", ("No text found in the PDF — it may be a scanned/image "
-                            "PDF. OCR isn't supported in this demo.")
-            return text, None
-        return raw.decode("utf-8", errors="replace"), None
-    return pasted, None
+        if len(raw) > MAX_FILE_BYTES:
+            return None, f"File too large (limit {MAX_FILE_BYTES // (1024 * 1024)} MB)."
+        ext = upload.filename.lower().rsplit(".", 1)[-1] if "." in upload.filename else ""
+        if ext == "pdf":
+            return {"document": Document("pdf", "application/pdf", raw)}, None
+        if ext in _IMAGE_TYPES:
+            return {"document": Document("image", _IMAGE_TYPES[ext], raw)}, None
+        if ext in ("heic", "heif"):
+            return None, ("HEIC photos aren't supported directly — please upload a "
+                          "JPG or PNG (your phone can share/export as JPEG).")
+        return {"raw_text": raw.decode("utf-8", errors="replace")}, None
+    if pasted and len(pasted.encode("utf-8")) > gating.MAX_INPUT_BYTES:
+        return None, f"Pasted text too large (limit {gating.MAX_INPUT_BYTES // 1000} KB)."
+    return {"raw_text": pasted}, None
 
 
 app = FastAPI(title="DocIntakeAgent")
@@ -156,8 +163,8 @@ PAGE = """<!doctype html>
   __BANNER__
   <div class="card">
     <form method="post" action="/extract" enctype="multipart/form-data">
-      <label for="up">Upload a document (PDF or .txt)</label>
-      <input id="up" type="file" name="upload" accept=".pdf,.txt" data-testid="file">
+      <label for="up">Upload a document — photo, scan, PDF, or .txt</label>
+      <input id="up" type="file" name="upload" accept=".pdf,.txt,.jpg,.jpeg,.png,.webp" data-testid="file">
       <div class="divider">— or paste text —</div>
       <textarea name="doc_text" rows="8" data-testid="input"
         placeholder="Paste document text...">__DOC__</textarea>
@@ -232,10 +239,7 @@ def extract(request: Request, doc_text: str = Form(""),
     unlocked, override = _gate(request)
     mode = effective_mode(unlocked, override)
 
-    text, error = _extract_text(doc_text, upload)
-    if not error and len(text.encode("utf-8")) > gating.MAX_INPUT_BYTES:
-        error = f"Input too large (limit {gating.MAX_INPUT_BYTES // 1000} KB)."
-
+    state, error = _resolve_input(doc_text, upload)
     if error:
         result_html = f'<div class="result error" data-testid="result">{html.escape(error)}</div>'
         return _render(doc_text=doc_text, result_html=result_html, mode=mode)
@@ -243,7 +247,7 @@ def extract(request: Request, doc_text: str = Form(""),
     llm = pick_llm(mode)
     if mode == "live":
         gating.record_live_call()
-    result = build_agent(llm).invoke({"raw_text": text})
+    result = build_agent(llm).invoke(state)
 
     status = result.get("status", "")
     badge = "done" if status == "done" else "failed"
@@ -255,4 +259,4 @@ def extract(request: Request, doc_text: str = Form(""),
         f'<p class="summary" data-testid="summary">{html.escape(result.get("summary", ""))}</p>'
         '</div>'
     )
-    return _render(doc_text=text, result_html=result_html, mode=mode)
+    return _render(doc_text=state.get("raw_text", ""), result_html=result_html, mode=mode)

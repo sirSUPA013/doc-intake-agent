@@ -14,7 +14,7 @@ from typing import Callable, Optional, TypedDict
 
 from pydantic import ValidationError
 
-from doc_intake.llm import LLM
+from doc_intake.llm import LLM, Document
 from doc_intake.schema import ExtractedDoc
 
 
@@ -22,6 +22,7 @@ class AgentState(TypedDict, total=False):
     """Shared state that flows through the whole graph and accumulates."""
 
     raw_text: str
+    document: Optional[Document]   # image/PDF input, if not pasted text
     extracted: Optional[dict]
     validation_errors: list[str]
     attempts: int
@@ -30,7 +31,9 @@ class AgentState(TypedDict, total=False):
 
 
 def ingest_node(state: AgentState) -> AgentState:
-    """Normalize the incoming text and flag empty input before spending a call."""
+    """Accept either an attached document or pasted text; flag empty input early."""
+    if state.get("document") is not None:
+        return {"status": "ingested", "attempts": 0, "validation_errors": []}
     text = (state.get("raw_text") or "").strip()
     if not text:
         return {"raw_text": "", "status": "empty",
@@ -39,17 +42,26 @@ def ingest_node(state: AgentState) -> AgentState:
             "validation_errors": []}
 
 
+_FIELDS = (
+    "Extract these fields:\n"
+    "  doc_type     - string, e.g. invoice, letter, report, receipt\n"
+    "  title        - string\n"
+    "  date         - string, ISO-8601 (YYYY-MM-DD) if a date is present\n"
+    "  entities     - array of strings: people or organizations named\n"
+    "  total_amount - number or null: any monetary total\n\n"
+    "Respond with ONLY a single valid JSON object using exactly those keys. "
+    "No markdown, no code fences, no explanation."
+)
+
+
 def _extract_prompt(text: str) -> str:
+    return f"You are a document-extraction service. {_FIELDS}\n\nDOCUMENT:\n{text}"
+
+
+def _extract_prompt_doc() -> str:
     return (
-        "You are a document-extraction service. From the document below, extract:\n"
-        "  doc_type     - string, e.g. invoice, letter, report, receipt\n"
-        "  title        - string\n"
-        "  date         - string, ISO-8601 (YYYY-MM-DD) if a date is present\n"
-        "  entities     - array of strings: people or organizations named\n"
-        "  total_amount - number or null: any monetary total\n\n"
-        "Respond with ONLY a single valid JSON object using exactly those keys. "
-        "No markdown, no code fences, no explanation.\n\n"
-        f"DOCUMENT:\n{text}"
+        "You are a document-extraction service. Read the attached document "
+        "(it may be a photo, scan, or PDF, possibly handwritten). " + _FIELDS
     )
 
 
@@ -67,7 +79,11 @@ def make_extract_node(llm: LLM) -> Callable[[AgentState], AgentState]:
 
     def extract_node(state: AgentState) -> AgentState:
         attempts = state.get("attempts", 0) + 1
-        raw = llm.complete(_extract_prompt(state["raw_text"]))
+        doc = state.get("document")
+        if doc is not None:
+            raw = llm.complete(_extract_prompt_doc(), document=doc)
+        else:
+            raw = llm.complete(_extract_prompt(state["raw_text"]))
         try:
             doc = ExtractedDoc(**_parse_json(raw))
         except (json.JSONDecodeError, ValidationError, TypeError) as exc:

@@ -1,37 +1,48 @@
 """The model interface, plus a fake stand-in for tests.
 
-The single most important testing idea in this project lives here. Nodes never
-import a concrete model client — they depend on the small `LLM` interface below.
-That dependency injection is what lets every test swap in `FakeLLM` and run the
-whole agent with zero network calls and perfectly deterministic output. The
-non-determinism of a real LLM is the thing agent tests have to control; mocking
-the model out is how you control it.
+The agent depends only on the small `LLM` interface here — production passes a
+real client, tests pass `FakeLLM`, and the graph runs identically either way.
+That seam is what makes the whole suite deterministic and free.
+
+This holds for multimodal input too: a `Document` (image or PDF) can be attached
+to a call, and `FakeLLM` simply ignores it — so vision tests stay just as
+deterministic as text tests.
 """
 
 from __future__ import annotations
 
-from typing import Protocol
+from dataclasses import dataclass
+from typing import Optional, Protocol
+
+
+@dataclass
+class Document:
+    """A non-text input for the model: an image or a PDF."""
+
+    kind: str          # "image" or "pdf"
+    media_type: str    # e.g. "image/jpeg", "image/png", "application/pdf"
+    data: bytes
 
 
 class LLM(Protocol):
-    """Anything with a `.complete(prompt) -> str` method is a usable model."""
+    """Anything with a `.complete(prompt, document=None) -> str` method."""
 
-    def complete(self, prompt: str) -> str: ...
+    def complete(self, prompt: str, document: Optional[Document] = None) -> str: ...
 
 
 class FakeLLM:
-    """A scripted model. Returns canned responses in order, one per call.
+    """A scripted model. Returns canned responses in order, one per call, and
+    ignores any attached document (so multimodal tests stay deterministic).
 
-    It also records every prompt it receives, so a test can assert *how many
-    times* and *with what* the agent called the model. (This is a test-only
-    helper — not production observability or token accounting.)
+    Records every prompt it receives so a test can assert how the agent called
+    the model. (Test-only helper — not production observability.)
     """
 
     def __init__(self, responses: list[str]) -> None:
         self._responses = list(responses)
         self.calls: list[str] = []
 
-    def complete(self, prompt: str) -> str:
+    def complete(self, prompt: str, document: Optional[Document] = None) -> str:
         self.calls.append(prompt)
         if not self._responses:
             raise AssertionError(

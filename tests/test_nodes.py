@@ -5,7 +5,7 @@ a FakeLLM, and asserts on the partial update it returns. This is the "every node
 tested in isolation before it ships" requirement.
 """
 
-from doc_intake.llm import FakeLLM
+from doc_intake.llm import Document, FakeLLM
 from doc_intake.nodes import (
     ingest_node,
     make_extract_node,
@@ -64,3 +64,19 @@ def test_summarize_node():
     out = node({"extracted": {"doc_type": "invoice"}})
     assert out["summary"] == "A short summary."
     assert out["status"] == "done"
+
+
+def test_ingest_accepts_a_document():
+    out = ingest_node({"document": Document("image", "image/png", b"\x89PNG-fake")})
+    assert out["status"] == "ingested"
+    assert out["attempts"] == 0
+
+
+def test_extract_from_document_with_mocked_llm(valid_doc_json):
+    # The document path routes through extract with the doc attached; the fake
+    # model ignores the bytes and returns scripted JSON — deterministic.
+    node = make_extract_node(FakeLLM([valid_doc_json]))
+    out = node({"document": Document("image", "image/png", b"fake-bytes"), "attempts": 0})
+    assert out["extracted"]["doc_type"] == "invoice"
+    assert out["validation_errors"] == []
+    assert out["attempts"] == 1

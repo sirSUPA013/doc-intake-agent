@@ -3,7 +3,8 @@
 A small **LangGraph** document-intake agent built to demonstrate **agent testing
 discipline** — node-level unit tests, graph-level integration tests, controlled
 non-determinism via a mocked model, schema-validated structured output, and
-regression coverage.
+regression coverage. It accepts a **photo, scan, PDF, or text** — images and PDFs
+are read by Claude vision directly, with no separate OCR engine.
 
 The entire agent builds and tests **offline with zero API cost**: every test
 swaps the real model for a scripted `FakeLLM`, which is exactly how you make
@@ -11,7 +12,7 @@ non-deterministic agents deterministic under test.
 
 ## What it does
 
-Takes raw document text and runs it through a graph:
+Takes a document — pasted text, a PDF, or a photo/scan of one — and runs it through a graph:
 
 ```
 START → ingest → (empty?) → fail
@@ -24,7 +25,9 @@ router:  valid     → summarize → END
 The `extract` node asks the model for structured JSON, validates it against a
 Pydantic schema, and — if the result is malformed — the conditional edge loops
 back to retry until it validates or the attempt budget runs out. That retry loop
-is why this is a **graph**, not a straight chain.
+is why this is a **graph**, not a straight chain. When the input is an image or
+PDF, the same node hands it to Claude's vision to read directly — including
+scanned and handwritten pages.
 
 ## Run it
 
@@ -57,14 +60,14 @@ pytest -m integration           # opt-in: calls the real model (costs a few cent
 | LLM mocking / controlled non-determinism | `src/doc_intake/llm.py` — `FakeLLM` scripted stub |
 | Regression authorship | `tests/test_regression.py` — each test names the bug it guards |
 | Structured output / JSON schema validation | `src/doc_intake/schema.py` — Pydantic contract |
-| Test coverage reporting | `pytest --cov` (currently 96%) |
+| Test coverage reporting | `pytest --cov` (core modules 95–100%; provider via integration test) |
 | Async agent execution | `tests/test_graph.py::test_async_invoke` (pytest-asyncio) |
 | Playwright E2E UI testing | `tests/e2e/` — real browser drives the FastAPI front door |
 | Live model integration | `src/doc_intake/providers.py` — `ClaudeLLM`, same interface as the fake |
-| Document ingestion (PDF + text) | `web/app.py` — upload parsing (text-based PDFs; OCR not included) |
-| Real-model integration test (opt-in) | `tests/integration/` — proves the live model yields a schema-valid result |
+| Multimodal input (photo / scan / PDF / text) | `web/app.py` + `providers.py` — images & PDFs read by Claude vision, no separate OCR |
+| Real-model integration test (opt-in) | `tests/integration/` — real model yields schema-valid output from both text *and* an image |
 | Model-call assertions (test-only) | `FakeLLM.calls` lets tests assert how the model was called — not production observability |
-| Cloud Run packaging | `Dockerfile` + `DEPLOY.md` — deploy config, boots locally; not yet deployed live |
+| GCP Cloud Run deployment | live, PIN-gated, at doc-agent.sjforge.dev (`Dockerfile` + `DEPLOY.md`) |
 
 ## Scope and honest limits
 
@@ -76,12 +79,8 @@ scope so far — calling it out rather than implying otherwise:
 - **No real-model *quality* evaluation.** There's an opt-in integration test that
   the real model returns a schema-valid result, but no eval set scoring extraction
   *accuracy* across many documents.
-- **Text-based PDFs only.** PDF text is extracted with `pypdf`; scanned/image PDFs
-  would need OCR, which isn't included.
 - **No production observability.** No tracing, structured logging, metrics, or
   token/cost tracking. `FakeLLM.calls` is a test helper only.
-- **Not deployed live.** The Dockerfile and Cloud Run steps are correct and boot
-  locally, but nothing has been deployed to a billed GCP project.
 - **No CI yet.** The suite runs locally; there's no automated pipeline.
 
 ## Design note
@@ -94,8 +93,8 @@ never knows the difference.
 ## Running it live
 
 `src/doc_intake/providers.py` ships a `ClaudeLLM` adapter — the same
-`.complete(prompt) -> str` interface as `FakeLLM`, so it drops straight into
-`build_agent(...)` with nothing else changed. Set `ANTHROPIC_API_KEY` in `.env`
-and the web UI switches to live mode automatically; without a key it falls back
-to scripted demo mode. Any other client (a local Ollama model, etc.) works the
-same way — implement one method.
+`.complete(prompt, document=None)` interface as `FakeLLM`, so it drops straight
+into `build_agent(...)` with nothing else changed; for an image or PDF it sends a
+vision/document block to Claude. Set `ANTHROPIC_API_KEY` in `.env` and the web UI
+switches to live mode automatically; without a key it falls back to scripted demo
+mode. The live demo (Sonnet) runs at **doc-agent.sjforge.dev** (PIN-gated).
