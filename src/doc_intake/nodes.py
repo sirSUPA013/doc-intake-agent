@@ -75,7 +75,16 @@ def _parse_json(raw: str) -> dict:
         cleaned = cleaned.strip("`")
         if cleaned.lower().startswith("json"):
             cleaned = cleaned[4:]
-    return json.loads(cleaned)
+    cleaned = cleaned.strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Forgiving fallback: pull out the outermost { ... } if the model wrapped
+        # the JSON in prose ("Here is the data: {...}. Hope that helps!").
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start != -1 and end > start:
+            return json.loads(cleaned[start:end + 1])
+        raise
 
 
 def make_extract_node(llm: LLM) -> Callable[[AgentState], AgentState]:

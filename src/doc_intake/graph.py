@@ -22,7 +22,7 @@ from doc_intake.nodes import (
 )
 
 
-def build_agent(llm: LLM, max_attempts: int = 2):
+def build_agent(llm: LLM, max_attempts: int = 3):
     """Build and compile the document-intake graph.
 
     Flow:

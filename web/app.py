@@ -193,8 +193,13 @@ PAGE = """<!doctype html>
 def _banner(mode: str) -> str:
     if mode == "live":
         used, cap = gating.live_used_today(), gating.DAILY_LIVE_CAP
-        return ('<div class="banner live" data-testid="mode">Live mode — powered by Claude. '
-                f'({used}/{cap} live extractions used today)</div>')
+        return ('<div class="banner live" data-testid="mode">Live mode — powered by Claude '
+                f'({used}/{cap} live extractions used today). '
+                '<form method="post" action="/lock" style="display:inline;margin-left:8px">'
+                '<button type="submit" data-testid="lock" style="background:transparent;'
+                'border:1px solid rgba(110,231,183,.5);color:#6ee7b7;padding:2px 10px;border-radius:5px;'
+                'font-size:.75rem;cursor:pointer;text-transform:uppercase;letter-spacing:.04em;'
+                'font-family:Rajdhani,sans-serif">Turn off</button></form></div>')
     return ('<div class="banner demo" data-testid="mode">Demo mode — scripted responses. '
             'Unlock live mode with the PIN below.</div>')
 
@@ -218,6 +223,17 @@ def _result_panel(result: dict) -> str:
     status = result.get("status", "")
     badge = "done" if status == "done" else "failed"
     parts = [f'<p>Status: <span class="badge {badge}" data-testid="status">{html.escape(status)}</span></p>']
+
+    if status != "done":
+        errs = result.get("validation_errors") or []
+        detail = str(errs[0]) if errs else "the model didn't return usable output"
+        parts.append(
+            '<div class="error" data-testid="failure-reason" style="margin-top:12px">'
+            "Couldn't complete extraction — the document may be hard to read, or the model's "
+            "output didn't match the expected format after several tries."
+            '<div style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:.8rem;'
+            f'color:var(--text-muted);white-space:pre-wrap">{html.escape(detail)}</div></div>'
+        )
 
     if result.get("summary"):
         parts.append(f'<p class="summary" data-testid="summary">{html.escape(result["summary"])}</p>')
@@ -279,6 +295,14 @@ def unlock(request: Request, pin: str = Form(""), override: str = Form("")):
         gating.COOKIE_NAME, gating.make_cookie(override=bool(override)),
         httponly=True, samesite="lax", max_age=8 * 3600,
     )
+    return resp
+
+
+@app.post("/lock")
+def lock():
+    """Turn live mode off — clear the unlock cookie, back to demo mode."""
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.delete_cookie(gating.COOKIE_NAME)
     return resp
 
 

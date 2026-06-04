@@ -82,3 +82,13 @@ def test_extract_from_document_with_mocked_llm(valid_doc_json):
     assert out["extracted"]["doc_type"] == "invoice"
     assert out["validation_errors"] == []
     assert out["attempts"] == 1
+
+
+def test_extract_recovers_json_wrapped_in_prose(valid_doc_json):
+    # Hardening: models sometimes wrap the JSON in prose. The parser should
+    # recover the object instead of failing the run.
+    wrapped = f"Sure! Here's the data:\n{valid_doc_json}\nLet me know if you need more."
+    node = make_extract_node(FakeLLM([wrapped]))
+    out = node({"raw_text": "x", "attempts": 0})
+    assert out["extracted"]["doc_type"] == "invoice"
+    assert out["validation_errors"] == []
