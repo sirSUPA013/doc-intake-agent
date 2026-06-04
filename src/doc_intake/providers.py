@@ -24,7 +24,7 @@ class ClaudeLLM:
     or handwritten pages.
     """
 
-    def __init__(self, model: str = DEFAULT_MODEL, max_tokens: int = 1024) -> None:
+    def __init__(self, model: str = DEFAULT_MODEL, max_tokens: int = 4096) -> None:
         from anthropic import Anthropic  # lazy import: only needed in live mode
 
         self._client = Anthropic()
