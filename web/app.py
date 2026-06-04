@@ -44,6 +44,11 @@ class DemoLLM:
             "date": "2026-05-01",
             "entities": ["ACME Corp", "Sam Yandow"],
             "total_amount": "$1,250.00",
+            "transcription": "ACME Corp\nInvoice  -  Date: 2026-05-01\nBill to: Sam Yandow\nTotal due: $1,250.00",
+            "key_details": [
+                {"label": "Bill to", "value": "Sam Yandow"},
+                {"label": "Total due", "value": "$1,250.00"},
+            ],
         })
 
 
@@ -203,6 +208,50 @@ def _render(doc_text: str = "", result_html: str = "", mode: str = "demo",
                 .replace("__UNLOCK__", unlock_msg))
 
 
+def _h3(text: str) -> str:
+    return (f'<h3 style="margin:18px 0 6px;font-family:Rajdhani,sans-serif;color:var(--blue-light);'
+            f'font-size:.9rem;letter-spacing:.08em;text-transform:uppercase">{text}</h3>')
+
+
+def _result_panel(result: dict) -> str:
+    ex = result.get("extracted") or {}
+    status = result.get("status", "")
+    badge = "done" if status == "done" else "failed"
+    parts = [f'<p>Status: <span class="badge {badge}" data-testid="status">{html.escape(status)}</span></p>']
+
+    if result.get("summary"):
+        parts.append(f'<p class="summary" data-testid="summary">{html.escape(result["summary"])}</p>')
+
+    if ex.get("transcription"):
+        parts.append(_h3("Transcription"))
+        parts.append('<div data-testid="transcription" style="white-space:pre-wrap;background:var(--void);'
+                     'border:1px solid rgba(59,130,246,.15);border-radius:6px;padding:14px;'
+                     'font-family:IBM Plex Mono,monospace;font-size:.85rem;color:var(--text)">'
+                     f'{html.escape(ex["transcription"])}</div>')
+
+    rows = []
+    for label, val in (("Type", ex.get("doc_type")), ("Title", ex.get("title")), ("Date", ex.get("date")),
+                       ("Entities", ", ".join(ex.get("entities") or []) or None), ("Total", ex.get("total_amount"))):
+        if val not in (None, ""):
+            rows.append((label, val))
+    rows += [(d.get("label", ""), d.get("value", "")) for d in (ex.get("key_details") or [])]
+    if rows:
+        parts.append(_h3("Details"))
+        trs = "".join(
+            f'<tr><td style="padding:4px 14px 4px 0;color:var(--text-2);vertical-align:top;'
+            f'white-space:nowrap;font-family:Rajdhani,sans-serif">{html.escape(str(l))}</td>'
+            f'<td style="padding:4px 0;color:var(--text)">{html.escape(str(v))}</td></tr>'
+            for l, v in rows
+        )
+        parts.append(f'<table data-testid="details" style="border-collapse:collapse;font-size:.9rem;width:100%">{trs}</table>')
+
+    parts.append('<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--text-muted);'
+                 'font-size:.85rem">Raw structured output (JSON)</summary>'
+                 f'<pre data-testid="json">{html.escape(json.dumps(ex, indent=2))}</pre></details>')
+
+    return '<div class="card result" data-testid="result">' + "".join(parts) + "</div>"
+
+
 def _gate(request: Request) -> tuple[bool, bool]:
     return gating.read_cookie(request.cookies.get(gating.COOKIE_NAME))
 
@@ -248,15 +297,5 @@ def extract(request: Request, doc_text: str = Form(""),
     if mode == "live":
         gating.record_live_call()
     result = build_agent(llm).invoke(state)
-
-    status = result.get("status", "")
-    badge = "done" if status == "done" else "failed"
-    extracted = json.dumps(result.get("extracted"), indent=2)
-    result_html = (
-        '<div class="card result" data-testid="result">'
-        f'<p>Status: <span class="badge {badge}" data-testid="status">{html.escape(status)}</span></p>'
-        f'<pre data-testid="json">{html.escape(extracted)}</pre>'
-        f'<p class="summary" data-testid="summary">{html.escape(result.get("summary", ""))}</p>'
-        '</div>'
-    )
-    return _render(doc_text=state.get("raw_text", ""), result_html=result_html, mode=mode)
+    return _render(doc_text=state.get("raw_text", ""),
+                   result_html=_result_panel(result), mode=mode)

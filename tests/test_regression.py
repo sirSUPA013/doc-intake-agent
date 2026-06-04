@@ -30,6 +30,22 @@ def test_note_without_date_or_title_validates():
     assert doc.title is None
 
 
+def test_key_details_and_transcription_round_trip():
+    # FAILURE MODE (found 2026-06-04): a handwritten contact list returned the
+    # names but DROPPED the phone numbers, addresses, and the note's text — the
+    # 5-field schema had nowhere to put them. transcription + key_details capture
+    # everything; this locks that they parse and round-trip.
+    doc = ExtractedDoc(
+        doc_type="contact list",
+        transcription="Tom Casper 502-485-0927\nKaty Casper 502-592-1221",
+        key_details=[{"label": "Tom Casper", "value": "502-485-0927"},
+                     {"label": "Katy Casper", "value": "502-592-1221"}],
+    )
+    dumped = doc.model_dump()
+    assert dumped["transcription"].startswith("Tom Casper")
+    assert dumped["key_details"][0] == {"label": "Tom Casper", "value": "502-485-0927"}
+
+
 def test_blank_amount_string_becomes_none():
     # FAILURE MODE: a blank amount string "" would crash float(); it should be
     # treated as "no amount present" rather than an error.

@@ -25,9 +25,16 @@ SHAPES = {
     "letter":  {"doc_type": "letter", "title": "A short letter", "date": "2026-01-03",
                 "entities": ["Jane", "John"], "total_amount": None},
     "note":    {"doc_type": "note", "title": None, "date": None,
-                "entities": ["Mom", "Dave"], "total_amount": None},
+                "entities": ["Mom", "Dave"], "total_amount": None,
+                "transcription": "Call Mom back. Fix the fence. Dave is in for the trip.",
+                "key_details": [{"label": "Dave", "value": "in for the trip"}]},
     "form":    {"doc_type": "form", "title": "Intake Form", "date": None,
                 "entities": [], "total_amount": None},
+    "contact": {"doc_type": "contact list", "title": None, "date": None,
+                "entities": ["Tom Casper", "Katy Casper"], "total_amount": None,
+                "transcription": "Tom Casper 502-485-0927\nKaty Casper 502-592-1221",
+                "key_details": [{"label": "Tom Casper", "value": "502-485-0927"},
+                                {"label": "Katy Casper", "value": "502-592-1221"}]},
     "card":    {"doc_type": "business card", "title": None, "date": None,
                 "entities": ["Dana Lee", "Globex"], "total_amount": None},
 }
@@ -39,3 +46,7 @@ def test_graph_accepts_document_shape(name, shape):
     result = build_agent(llm).invoke({"raw_text": f"a {name}"})
     assert result["status"] == "done", f"{name} failed: {result.get('validation_errors')}"
     assert result["extracted"]["doc_type"] == shape["doc_type"]
+    if "key_details" in shape:
+        assert len(result["extracted"]["key_details"]) == len(shape["key_details"])
+    if "transcription" in shape:
+        assert result["extracted"]["transcription"] == shape["transcription"]

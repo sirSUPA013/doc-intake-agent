@@ -43,13 +43,17 @@ def ingest_node(state: AgentState) -> AgentState:
 
 
 _FIELDS = (
-    "Extract these fields:\n"
-    "  doc_type     - string, e.g. invoice, letter, report, receipt, note\n"
-    "  title        - string, or null if the document has no clear title\n"
-    "  date         - string, ISO-8601 (YYYY-MM-DD), or null if no date is present\n"
-    "  entities     - array of strings: people or organizations named (may be empty)\n"
-    "  total_amount - number, or null if there's no monetary total\n\n"
-    "Use null for any field that isn't present. Respond with ONLY a single valid "
+    "Extract these fields as JSON:\n"
+    "  doc_type      - string: invoice, letter, report, receipt, note, contact list, etc.\n"
+    "  title         - string, or null if there's no clear title\n"
+    "  date          - ISO-8601 (YYYY-MM-DD), or null if no date is present\n"
+    "  entities      - array of strings: people or organizations named (may be empty)\n"
+    "  total_amount  - number, or null if there's no monetary total\n"
+    "  transcription - a faithful, verbatim transcription of ALL text in the document\n"
+    "  key_details   - array of {label, value} objects capturing every concrete detail not\n"
+    "                  covered above (phone numbers, addresses, line items, directions);\n"
+    "                  pair each value with the name or label it belongs to. May be empty.\n\n"
+    "Use null or an empty array for anything not present. Respond with ONLY a single valid "
     "JSON object using exactly those keys. No markdown, no code fences, no explanation."
 )
 

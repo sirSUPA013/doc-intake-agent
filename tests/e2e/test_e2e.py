@@ -17,5 +17,6 @@ def test_extract_flow_in_browser(live_server, page):
     page.wait_for_selector("[data-testid=result]")
     # case-insensitive: the badge is styled text-transform:uppercase
     assert page.inner_text("[data-testid=status]").strip().lower() == "done"
-    assert "invoice" in page.inner_text("[data-testid=json]")
+    # 'invoice' shows in the visible result panel (the raw JSON is collapsed)
+    assert "invoice" in page.inner_text("[data-testid=result]").lower()
     assert page.inner_text("[data-testid=summary]").strip() != ""

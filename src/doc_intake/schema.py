@@ -11,14 +11,25 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
 
 
+class KeyDetail(BaseModel):
+    """A flexible label/value pair for details that don't fit the typed fields
+    — phone numbers, addresses, line items, directions, and so on."""
+
+    label: str
+    value: str
+
+
 class ExtractedDoc(BaseModel):
     """The fields we pull out of a raw document."""
 
-    doc_type: str = Field(..., min_length=1, description="e.g. invoice, letter, report, note")
+    doc_type: str = Field(..., min_length=1, description="e.g. invoice, letter, note, contact list")
     title: str | None = Field(default=None, description="document title, or null if none")
     date: str | None = Field(default=None, description="ISO-8601 date, or null if none present")
     entities: list[str] = Field(default_factory=list)
     total_amount: float | None = Field(default=None, ge=0)
+    transcription: str | None = Field(default=None, description="verbatim transcription of all text")
+    key_details: list[KeyDetail] = Field(default_factory=list,
+                                          description="flexible label/value pairs for everything else")
 
     @field_validator("total_amount", mode="before")
     @classmethod
