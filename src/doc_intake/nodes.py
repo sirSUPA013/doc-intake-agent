@@ -41,8 +41,14 @@ def ingest_node(state: AgentState) -> AgentState:
 
 def _extract_prompt(text: str) -> str:
     return (
-        "Extract the document fields as strict JSON with keys "
-        "doc_type, title, date, entities, total_amount.\n\n"
+        "You are a document-extraction service. From the document below, extract:\n"
+        "  doc_type     - string, e.g. invoice, letter, report, receipt\n"
+        "  title        - string\n"
+        "  date         - string, ISO-8601 (YYYY-MM-DD) if a date is present\n"
+        "  entities     - array of strings: people or organizations named\n"
+        "  total_amount - number or null: any monetary total\n\n"
+        "Respond with ONLY a single valid JSON object using exactly those keys. "
+        "No markdown, no code fences, no explanation.\n\n"
         f"DOCUMENT:\n{text}"
     )
 

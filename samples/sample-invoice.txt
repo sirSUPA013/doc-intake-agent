@@ -1,0 +1,27 @@
+NORTHWIND TRADING CO.
+1420 Harbor Way, Seattle, WA 98101
+
+INVOICE
+
+Invoice Number: NW-2026-0184
+Invoice Date: 2026-04-17
+Due Date: 2026-05-17
+
+Bill To:
+  Riverside Bakery LLC
+  Attn: Maria Alvarez
+  88 Mill Street, Portland, OR 97209
+
+Description                         Qty     Unit Price     Amount
+-------------------------------------------------------------------
+Organic bread flour (50 lb)          12        $38.50      $462.00
+Active dry yeast (2 lb)               6        $14.25       $85.50
+Sea salt, coarse (25 lb)             4        $22.00       $88.00
+Delivery & handling                   1        $65.00       $65.00
+-------------------------------------------------------------------
+                                              Subtotal      $700.50
+                                              Tax (8.5%)      $59.54
+                                              TOTAL DUE    $1,760.04
+
+Payment terms: Net 30. Please reference the invoice number on payment.
+Questions? accounts@northwindtrading.example

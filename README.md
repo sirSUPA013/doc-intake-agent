@@ -34,12 +34,17 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 playwright install chromium     # one-time, for the E2E test
 
-python demo.py                  # watch the agent run (no API key needed)
-pytest --cov=src/doc_intake     # fast unit + integration suite (E2E excluded)
+# --- see it run with zero setup (scripted model, no key) ---
+python demo.py
+
+# --- tests (no API key needed) ---
+pytest --cov=src/doc_intake     # fast unit + graph suite (E2E + integration excluded)
 pytest -m e2e                   # Playwright browser test against the real UI
 
-# the web UI itself:
-uvicorn web.app:app --reload    # then open http://127.0.0.1:8000
+# --- run it live with a real model ---
+cp .env.example .env            # then paste your ANTHROPIC_API_KEY into .env
+uvicorn web.app:app --reload    # open http://127.0.0.1:8000; upload samples/sample-invoice.txt
+pytest -m integration           # opt-in: calls the real model (costs a few cents)
 ```
 
 ## How it maps to the role
@@ -55,6 +60,9 @@ uvicorn web.app:app --reload    # then open http://127.0.0.1:8000
 | Test coverage reporting | `pytest --cov` (currently 96%) |
 | Async agent execution | `tests/test_graph.py::test_async_invoke` (pytest-asyncio) |
 | Playwright E2E UI testing | `tests/e2e/` — real browser drives the FastAPI front door |
+| Live model integration | `src/doc_intake/providers.py` — `ClaudeLLM`, same interface as the fake |
+| Document ingestion (PDF + text) | `web/app.py` — upload parsing (text-based PDFs; OCR not included) |
+| Real-model integration test (opt-in) | `tests/integration/` — proves the live model yields a schema-valid result |
 | Model-call assertions (test-only) | `FakeLLM.calls` lets tests assert how the model was called — not production observability |
 | Cloud Run packaging | `Dockerfile` + `DEPLOY.md` — deploy config, boots locally; not yet deployed live |
 
@@ -65,9 +73,11 @@ scope so far — calling it out rather than implying otherwise:
 
 - **No tool-calling.** The agent extracts and validates; it doesn't call external
   tools, so this doesn't exercise tool-call testing (a large part of real agent testing).
-- **No real-model evaluation.** Tests use a scripted `FakeLLM` for determinism.
-  There's no eval set scoring a real model's extraction *quality* — only the
-  plumbing is tested, not the prompt's accuracy.
+- **No real-model *quality* evaluation.** There's an opt-in integration test that
+  the real model returns a schema-valid result, but no eval set scoring extraction
+  *accuracy* across many documents.
+- **Text-based PDFs only.** PDF text is extracted with `pypdf`; scanned/image PDFs
+  would need OCR, which isn't included.
 - **No production observability.** No tracing, structured logging, metrics, or
   token/cost tracking. `FakeLLM.calls` is a test helper only.
 - **Not deployed live.** The Dockerfile and Cloud Run steps are correct and boot
@@ -83,6 +93,9 @@ never knows the difference.
 
 ## Running it live
 
-Swap `FakeLLM` for any real client with a `.complete(prompt) -> str` method —
-a Claude API wrapper or a local Ollama model both work. Nothing in the graph or
-the nodes changes.
+`src/doc_intake/providers.py` ships a `ClaudeLLM` adapter — the same
+`.complete(prompt) -> str` interface as `FakeLLM`, so it drops straight into
+`build_agent(...)` with nothing else changed. Set `ANTHROPIC_API_KEY` in `.env`
+and the web UI switches to live mode automatically; without a key it falls back
+to scripted demo mode. Any other client (a local Ollama model, etc.) works the
+same way — implement one method.
