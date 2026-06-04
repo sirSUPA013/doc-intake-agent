@@ -1,13 +1,15 @@
 """Web front door for the agent — upload a document (PDF or text) and watch the
 agent extract structured fields and summarize it.
 
+Styled to match the SJForge "Nexus" design system (dark theme, blue/gold accents,
+Orbitron/Rajdhani/IBM Plex fonts) so it fits the sjforge.dev environment.
+
 Modes (shown as a banner):
   - DEMO: scripted model, free, always available. The public default.
   - LIVE: real Claude, unlocked by entering the PIN. A daily cap is the cost
-    backstop; the PIN can override the cap when needed. See web/gating.py.
+    backstop; the PIN can override the cap. See web/gating.py.
 
-If no ANTHROPIC_API_KEY is configured, the app stays in demo mode regardless, so
-it can never faceplant (e.g. no network at an interview).
+If no ANTHROPIC_API_KEY is configured, the app stays in demo mode regardless.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from doc_intake import build_agent
 from doc_intake.llm import LLM
 from web import gating
 
-load_dotenv()  # pick up a local .env if present
+load_dotenv()
 
 
 class DemoLLM:
@@ -44,7 +46,6 @@ class DemoLLM:
 
 
 def effective_mode(unlocked: bool, override: bool) -> str:
-    """Mode actually used, accounting for both the gate and key availability."""
     mode = gating.decide_mode(unlocked, override)
     if mode == "live" and not os.environ.get("ANTHROPIC_API_KEY"):
         return "demo"
@@ -63,7 +64,6 @@ def pick_llm(mode: str) -> LLM:
 
 
 def _extract_text(pasted: str, upload: UploadFile | None) -> tuple[str, str | None]:
-    """Resolve input to plain text. Returns (text, error_message)."""
     if upload is not None and upload.filename:
         raw = upload.file.read()
         if upload.filename.lower().endswith(".pdf"):
@@ -84,46 +84,116 @@ def _extract_text(pasted: str, upload: UploadFile | None) -> tuple[str, str | No
 
 app = FastAPI(title="DocIntakeAgent")
 
+STYLE = """
+:root{
+  --void:#07080a;--midnight:#0f1118;--slate:#12141f;--charcoal:#1a1d2e;
+  --blue:#3b82f6;--blue-light:#60a5fa;--blue-core:#1e40af;--blue-pale:#93c5fd;
+  --gold:#f59e0b;--gold-light:#fbbf24;--success:#10b981;--error:#ef4444;
+  --text:#e2e8f0;--text-2:#94a3b8;--text-muted:#64748b;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;
+  background:linear-gradient(145deg,var(--void) 0%,#0a0a0f 50%,var(--midnight) 100%);
+  background-attachment:fixed;line-height:1.6;}
+.grid{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(59,130,246,.03) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(59,130,246,.03) 1px,transparent 1px);background-size:40px 40px;}
+.wrap{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:48px 20px 40px;}
+.brand{font-family:'Rajdhani',sans-serif;font-size:.78rem;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--blue-light);}
+h1{font-family:'Orbitron',sans-serif;font-weight:700;font-size:1.85rem;margin:.15em 0 .15em;
+  background:linear-gradient(90deg,var(--text),var(--blue-light));
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+.sub{color:var(--text-2);margin:0;}
+.card{background:linear-gradient(135deg,var(--midnight) 0%,var(--slate) 100%);
+  border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:24px;margin-top:22px;
+  box-shadow:inset 0 0 30px rgba(59,130,246,.05);}
+label{display:block;color:var(--text-2);font-size:.9rem;margin-bottom:6px;}
+input[type=file],textarea{width:100%;background:var(--void);color:var(--text);
+  border:1px solid rgba(59,130,246,.25);border-radius:6px;padding:10px;font-family:inherit;}
+textarea{font-family:'IBM Plex Mono',monospace;font-size:.85rem;resize:vertical;margin-top:4px;}
+.divider{color:var(--text-muted);text-align:center;font-size:.85rem;margin:14px 0;}
+button{font-family:'Rajdhani',sans-serif;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  background:linear-gradient(135deg,var(--blue-core),var(--blue));color:#fff;border:none;
+  border-radius:6px;padding:10px 24px;cursor:pointer;font-size:.95rem;margin-top:14px;}
+button:hover{background:linear-gradient(135deg,var(--blue),var(--blue-light));}
+.banner{padding:11px 15px;border-radius:8px;font-size:.92rem;margin-top:18px;border:1px solid;}
+.banner.live{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.4);color:#6ee7b7;}
+.banner.demo{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4);color:var(--gold-light);}
+.badge{font-family:'Rajdhani',sans-serif;font-weight:600;text-transform:uppercase;
+  padding:2px 10px;border-radius:4px;font-size:.85rem;}
+.badge.done{background:rgba(16,185,129,.15);color:#6ee7b7;}
+.badge.failed{background:rgba(239,68,68,.15);color:#fca5a5;}
+pre{background:var(--void);border:1px solid rgba(59,130,246,.15);border-radius:6px;padding:14px;
+  overflow:auto;font-family:'IBM Plex Mono',monospace;font-size:.85rem;color:var(--blue-pale);}
+.summary{color:var(--text);}
+.error{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.4);color:#fca5a5;
+  border-radius:8px;padding:16px;}
+.unlock{margin-top:28px;padding-top:18px;border-top:1px solid rgba(59,130,246,.15);
+  color:var(--text-muted);font-size:.85rem;}
+.unlock input[type=password]{width:120px;background:var(--void);color:var(--text);
+  border:1px solid rgba(59,130,246,.25);border-radius:4px;padding:4px 8px;font-family:inherit;}
+.unlock button{padding:5px 14px;font-size:.78rem;margin-top:0;}
+footer{position:relative;z-index:1;text-align:center;color:var(--text-muted);font-size:.8rem;padding:18px;}
+a{color:var(--blue-light);text-decoration:none;}
+a:hover{color:var(--blue-pale);}
+"""
+
 PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>DocIntakeAgent</title></head>
-<body style="font-family: system-ui; max-width: 720px; margin: 40px auto; line-height:1.5">
-<h1>Document Intake Agent</h1>
-{banner}
-<form method="post" action="/extract" enctype="multipart/form-data">
-  <p><label>Upload a document (PDF or .txt):<br>
-    <input type="file" name="upload" accept=".pdf,.txt" data-testid="file"></label></p>
-  <p style="color:#666">&mdash; or paste text &mdash;</p>
-  <textarea name="doc_text" rows="8" style="width:100%" data-testid="input"
-    placeholder="Paste document text...">{doc_text}</textarea><br>
-  <button type="submit" data-testid="submit">Extract</button>
-</form>
-{result}
-<hr style="margin-top:32px;border:none;border-top:1px solid #e5e5e5">
-<form method="post" action="/unlock" style="color:#666;font-size:0.9em">
-  <strong>Live mode</strong> (real Claude) &mdash; enter PIN:
-  <input type="password" name="pin" data-testid="pin" style="width:120px">
-  <label><input type="checkbox" name="override" value="1" data-testid="override"> override daily cap</label>
-  <button type="submit" data-testid="unlock">Unlock</button>
-  {unlock_msg}
-</form>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document Intake Agent — SJForge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<style>__STYLE__</style></head>
+<body>
+<div class="grid"></div>
+<div class="wrap">
+  <div class="brand">SJForge &middot; AI Agent Demo</div>
+  <h1>Document Intake Agent</h1>
+  <p class="sub">A LangGraph agent that extracts structured fields from a document, validates them against a schema, and summarizes it.</p>
+  __BANNER__
+  <div class="card">
+    <form method="post" action="/extract" enctype="multipart/form-data">
+      <label for="up">Upload a document (PDF or .txt)</label>
+      <input id="up" type="file" name="upload" accept=".pdf,.txt" data-testid="file">
+      <div class="divider">— or paste text —</div>
+      <textarea name="doc_text" rows="8" data-testid="input"
+        placeholder="Paste document text...">__DOC__</textarea>
+      <button type="submit" data-testid="submit">Extract</button>
+    </form>
+  </div>
+  __RESULT__
+  <form class="unlock" method="post" action="/unlock">
+    <strong style="color:var(--text-2)">Live mode</strong> (real Claude) — enter PIN:
+    <input type="password" name="pin" data-testid="pin">
+    <label style="display:inline;color:var(--text-muted)"><input type="checkbox" name="override" value="1" data-testid="override"> override daily cap</label>
+    <button type="submit" data-testid="unlock">Unlock</button>
+    __UNLOCK__
+  </form>
+</div>
+<footer>Part of the <a href="https://portfolio.sjforge.dev">SJForge</a> ecosystem &middot;
+<a href="https://github.com/sirSUPA013/doc-intake-agent">source on GitHub</a></footer>
 </body></html>"""
 
 
 def _banner(mode: str) -> str:
     if mode == "live":
         used, cap = gating.live_used_today(), gating.DAILY_LIVE_CAP
-        return ('<p data-testid="mode" style="padding:8px 12px;background:#dcfce7;'
-                f'border-radius:6px">Live mode &mdash; powered by Claude. '
-                f'({used}/{cap} live extractions used today)</p>')
-    return ('<p data-testid="mode" style="padding:8px 12px;background:#fef9c3;'
-            'border-radius:6px">Demo mode &mdash; scripted responses. Unlock live '
-            'mode with the PIN below.</p>')
+        return ('<div class="banner live" data-testid="mode">Live mode — powered by Claude. '
+                f'({used}/{cap} live extractions used today)</div>')
+    return ('<div class="banner demo" data-testid="mode">Demo mode — scripted responses. '
+            'Unlock live mode with the PIN below.</div>')
 
 
 def _render(doc_text: str = "", result_html: str = "", mode: str = "demo",
             unlock_msg: str = "") -> str:
-    return PAGE.format(banner=_banner(mode), doc_text=html.escape(doc_text),
-                       result=result_html, unlock_msg=unlock_msg)
+    return (PAGE.replace("__STYLE__", STYLE)
+                .replace("__BANNER__", _banner(mode))
+                .replace("__DOC__", html.escape(doc_text))
+                .replace("__RESULT__", result_html)
+                .replace("__UNLOCK__", unlock_msg))
 
 
 def _gate(request: Request) -> tuple[bool, bool]:
@@ -144,8 +214,10 @@ def healthz() -> dict:
 @app.post("/unlock")
 def unlock(request: Request, pin: str = Form(""), override: str = Form("")):
     if not gating.pin_ok(pin):
-        msg = '<span style="color:#b91c1c"> &mdash; incorrect PIN</span>'
-        return HTMLResponse(_render(mode="demo", unlock_msg=msg))
+        return HTMLResponse(_render(
+            mode="demo",
+            unlock_msg='<span style="color:#fca5a5"> — incorrect PIN</span>',
+        ))
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie(
         gating.COOKIE_NAME, gating.make_cookie(override=bool(override)),
@@ -165,10 +237,7 @@ def extract(request: Request, doc_text: str = Form(""),
         error = f"Input too large (limit {gating.MAX_INPUT_BYTES // 1000} KB)."
 
     if error:
-        result_html = (
-            '<div data-testid="result" style="margin-top:24px;padding:16px;'
-            f'background:#fee2e2;border-radius:8px">{html.escape(error)}</div>'
-        )
+        result_html = f'<div class="result error" data-testid="result">{html.escape(error)}</div>'
         return _render(doc_text=doc_text, result_html=result_html, mode=mode)
 
     llm = pick_llm(mode)
@@ -176,14 +245,14 @@ def extract(request: Request, doc_text: str = Form(""),
         gating.record_live_call()
     result = build_agent(llm).invoke({"raw_text": text})
 
+    status = result.get("status", "")
+    badge = "done" if status == "done" else "failed"
     extracted = json.dumps(result.get("extracted"), indent=2)
     result_html = (
-        '<div data-testid="result" style="margin-top:24px;padding:16px;'
-        'background:#f4f4f5;border-radius:8px">'
-        f'<p>Status: <strong data-testid="status">{html.escape(result.get("status", ""))}'
-        '</strong></p>'
+        '<div class="card result" data-testid="result">'
+        f'<p>Status: <span class="badge {badge}" data-testid="status">{html.escape(status)}</span></p>'
         f'<pre data-testid="json">{html.escape(extracted)}</pre>'
-        f'<p data-testid="summary">{html.escape(result.get("summary", ""))}</p>'
+        f'<p class="summary" data-testid="summary">{html.escape(result.get("summary", ""))}</p>'
         '</div>'
     )
     return _render(doc_text=text, result_html=result_html, mode=mode)
