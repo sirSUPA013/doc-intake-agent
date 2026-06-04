@@ -14,9 +14,9 @@ from pydantic import BaseModel, Field, field_validator
 class ExtractedDoc(BaseModel):
     """The fields we pull out of a raw document."""
 
-    doc_type: str = Field(..., min_length=1, description="e.g. invoice, letter, report")
-    title: str = Field(..., min_length=1)
-    date: str = Field(..., description="ISO-8601 date, YYYY-MM-DD")
+    doc_type: str = Field(..., min_length=1, description="e.g. invoice, letter, report, note")
+    title: str | None = Field(default=None, description="document title, or null if none")
+    date: str | None = Field(default=None, description="ISO-8601 date, or null if none present")
     entities: list[str] = Field(default_factory=list)
     total_amount: float | None = Field(default=None, ge=0)
 

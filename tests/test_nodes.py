@@ -45,8 +45,10 @@ def test_extract_handles_bad_json():
 
 
 def test_extract_handles_schema_violation():
-    # Missing the required 'title' field -> Pydantic rejects it.
-    node = make_extract_node(FakeLLM(['{"doc_type": "memo", "date": "2026-01-01"}']))
+    # Missing the required 'doc_type' field -> Pydantic rejects it.
+    # (title/date are optional now — notes legitimately lack them — so doc_type
+    # is the required field a violation must omit.)
+    node = make_extract_node(FakeLLM(['{"title": "Memo", "date": "2026-01-01"}']))
     out = node({"raw_text": "x", "attempts": 0})
     assert out["extracted"] is None
     assert out["validation_errors"]

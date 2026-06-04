@@ -19,6 +19,17 @@ def test_amount_with_currency_symbol_and_commas_parses():
     assert doc.total_amount == 1234.56
 
 
+def test_note_without_date_or_title_validates():
+    # FAILURE MODE (found 2026-06-04 testing the live demo): freeform handwritten
+    # notes have no date or title, the model returns null for them, and the schema
+    # rejected it because date/title were required — so every note failed. They're
+    # now nullable; only doc_type is required.
+    doc = ExtractedDoc(doc_type="note", title=None, date=None, entities=["Mom", "Dave"])
+    assert doc.doc_type == "note"
+    assert doc.date is None
+    assert doc.title is None
+
+
 def test_blank_amount_string_becomes_none():
     # FAILURE MODE: a blank amount string "" would crash float(); it should be
     # treated as "no amount present" rather than an error.

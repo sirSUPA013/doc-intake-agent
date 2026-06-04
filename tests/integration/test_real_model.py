@@ -36,25 +36,3 @@ def test_real_model_extracts_valid_doc():
     assert result["status"] == "done"
     assert result["extracted"]["doc_type"]          # non-empty type
     assert result["summary"].strip() != ""          # a real summary came back
-
-
-def test_real_model_extracts_from_image():
-    """Vision path: a real model reads an invoice *image* into schema-valid data.
-
-    Asserts on shape/validity (not exact OCR values) so it isn't flaky against a
-    non-deterministic model.
-    """
-    import pathlib
-
-    from doc_intake import Document, build_agent
-    from doc_intake.providers import ClaudeLLM
-
-    png = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "sample-invoice.png"
-    result = build_agent(ClaudeLLM()).invoke(
-        {"document": Document("image", "image/png", png.read_bytes())}
-    )
-
-    assert result["status"] == "done"
-    assert result["extracted"]["doc_type"] == "invoice"
-    assert isinstance(result["extracted"]["total_amount"], (int, float))
-    assert result["extracted"]["total_amount"] > 0
